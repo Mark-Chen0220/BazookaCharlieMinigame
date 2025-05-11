@@ -1,3 +1,14 @@
+<!--
+這個小遊戲有個背景故事：
+
+第二次世界大戰期間，美國陸軍上尉
+查爾斯·“查理”·卡本特（Charles “Charlie” Carpenter）
+駕駛一架輕型觀察機（L-4 Grasshopper），在機翼下安裝了六門火箭筒（Bazooka）
+，勇敢對抗納粹德軍的坦克和地面部隊。
+由於他非凡的勇氣與創意，他被士兵們暱稱為「巴祖卡查理」。
+他的英勇事蹟成為歷史上的傳奇！  
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,6 +66,18 @@ imgHalftrack.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob
 const imgExplosion = new Image();
 imgExplosion.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob/main/explosion.png?raw=true';
 
+// === Sounds ===
+const sndFiring = new Audio('https://github.com/Mark-Chen0220/BazookaCharlieMinigame/raw/refs/heads/main/bazookaFiring.mp3');
+sndFiring.volume = 0.05; // 5% volume
+
+const sndPropeller = new Audio('https://github.com/Mark-Chen0220/BazookaCharlieMinigame/raw/refs/heads/main/planePropeller.mp3');
+sndPropeller.loop = true;
+sndPropeller.volume = 1.0; // 100% volume
+
+const sndExplosion = new Audio('https://github.com/Mark-Chen0220/BazookaCharlieMinigame/raw/refs/heads/main/explosionSFX.mp3');
+sndFiring.volume = 0.4; // 40% volume
+
+
 // === Game State ===
 let score = 0;
 let lastShotTime = 0;
@@ -89,6 +112,8 @@ document.addEventListener('keydown', (e) => {
 
 function startGame() {
   gameState = 'playing';
+  sndPropeller.currentTime = 0;
+  sndPropeller.play();
   planeExploded = false;
   score = 0;
   enemies = [];
@@ -102,6 +127,8 @@ function startGame() {
 function fireBazooka() {
   const now = Date.now();
   if (now - lastShotTime > fireRate) {
+    sndFiring.currentTime = 0;
+    sndFiring.play();
     const angleRad = (plane.angle * Math.PI) / 180;
     rockets.push({
       x: plane.x + plane.width,
@@ -145,6 +172,8 @@ function update() {
     if (gameState !== 'gameOver') {
         gameState = 'gameOver';
         planeExploded = true;
+        sndExplosion.play();
+        sndPropeller.pause();
         setTimeout(() => {
             planeExploded = false;
         }, 500); // explosion lasts half a second
@@ -177,6 +206,8 @@ function update() {
         enemy.hit = true;
         rocket.hit = true;
         score++;
+        sndExplosion.currentTime = 0;
+        sndExplosion.play();   // Explosion sound for hit
       }
     }
   }
