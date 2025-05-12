@@ -1,14 +1,3 @@
-<!--
-這個小遊戲有個背景故事：
-
-第二次世界大戰期間，美國陸軍上尉
-查爾斯·“查理”·卡本特（Charles “Charlie” Carpenter）
-駕駛一架輕型觀察機（L-4 Grasshopper），在機翼下安裝了六門火箭筒（Bazooka）
-，勇敢對抗納粹德軍的坦克和地面部隊。
-由於他非凡的勇氣與創意，他被士兵們暱稱為「巴祖卡查理」。
-他的英勇事蹟成為歷史上的傳奇！  
--->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,6 +44,7 @@ const lift = -6;
 const bgSpeed = 1;
 const enemySpeed = 1;
 const fireRate = 500;
+const flakFireRate = 2000; // Flak 88 firing rate in ms
 
 // === Images ===
 const imgPlane = new Image();
@@ -63,6 +53,8 @@ const imgTank = new Image();
 imgTank.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob/main/tank.png?raw=true';
 const imgHalftrack = new Image();
 imgHalftrack.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob/main/halftrack.png?raw=true';
+const imgFlak88 = new Image();
+imgFlak88.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob/main/flak88.png?raw=true';
 const imgExplosion = new Image();
 imgExplosion.src = 'https://github.com/Mark-Chen0220/BazookaCharlieMinigame/blob/main/explosion.png?raw=true';
 
@@ -75,7 +67,10 @@ sndPropeller.loop = true;
 sndPropeller.volume = 1.0; // 100% volume 
 
 const sndExplosion = new Audio('https://raw.githubusercontent.com/Mark-Chen0220/BazookaCharlieMinigame/main/explosionSFX.mp3');
-sndFiring.volume = 0.4; // 40% volume
+sndExplosion.volume = 0.4; // 40% volume
+
+const sndFlakFire = new Audio('https://raw.githubusercontent.com/Mark-Chen0220/BazookaCharlieMinigame/main/flakFire.mp3');
+sndFlakFire.volume = 0.3; // 30% volume
 
 
 // === Game State ===
@@ -97,6 +92,9 @@ let planeExploded = false;
 // === Entities ===
 let enemies = [];
 let rockets = [];
+let explosions = [];
+let flakProjectiles = []; // Array for Flak 88 projectiles
+let lastFlakFireTime = 0;
 
 // === Input Handling ===
 document.addEventListener('keydown', (e) => {
@@ -118,8 +116,11 @@ function startGame() {
   score = 0;
   enemies = [];
   rockets = [];
+  explosions = [];
+  flakProjectiles = [];
   plane.y = canvas.height / 2;
   plane.velocityY = 0;
+  lastFlakFireTime = Date.now();
   requestAnimationFrame(gameLoop);
 }
 
@@ -146,16 +147,53 @@ function fireBazooka() {
 function spawnEnemy() {
   if (gameState !== 'playing') return;
 
-  const type = Math.random() < 0.5 ? 'tank' : 'halftrack';
-  const dimensions = type === 'tank' ? [62, 25] : [45, 18];
+  // Randomly choose between tank, halftrack, or flak88 (with lower probability)
+  const rand = Math.random();
+  let type, dimensions;
+  
+  if (rand < 0.4) { // 40% chance for tank
+    type = 'tank';
+    dimensions = [62, 25];
+  } else if (rand < 0.8) { // 40% chance for halftrack
+    type = 'halftrack';
+    dimensions = [45, 18];
+  } else { // 20% chance for flak88
+    type = 'flak88';
+    dimensions = [47, 53];
+  }
+
   enemies.push({
     type: type,
     x: canvas.width + Math.random() * 200,
     y: canvas.height - 40 - dimensions[1],
     width: dimensions[0],
     height: dimensions[1],
-    hit: false
+    hit: false,
+    lastFireTime: 0 // For flak88 firing tracking
   });
+}
+
+function fireFlak(flak) {
+  const now = Date.now();
+  if (now - flak.lastFireTime > flakFireRate) {
+    sndFlakFire.currentTime = 0;
+    sndFlakFire.play();
+    
+    // Calculate angle (80 degrees upwards)
+    const angle = 80 * Math.PI / 180;
+    const speed = 3;
+    
+    flakProjectiles.push({
+      x: flak.x + flak.width/2,
+      y: flak.y,
+      width: 8,
+      height: 8,
+      dx: Math.cos(angle) * speed,
+      dy: -Math.sin(angle) * speed
+    });
+    
+    flak.lastFireTime = now;
+  }
 }
 
 function update() {
@@ -192,10 +230,32 @@ function update() {
   }
 
   // Enemies
-  enemies.forEach(e => e.x -= enemySpeed);
+  enemies.forEach(e => {
+    e.x -= enemySpeed;
+    
+    // If this is a flak88 and it's time to fire
+    if (e.type === 'flak88' && !e.hit) {
+      fireFlak(e);
+    }
+  });
+  
   enemies = enemies.filter(e => e.x + e.width > 0 && !e.hit);
 
-  // Collisions
+  // Update flak projectiles
+  flakProjectiles.forEach(p => {
+    p.x += p.dx;
+    p.y += p.dy;
+  });
+  flakProjectiles = flakProjectiles.filter(p => 
+    p.x > 0 && p.x < canvas.width && 
+    p.y > 0 && p.y < canvas.height
+  );
+
+  // Update explosions (reduce their timer)
+  explosions.forEach(e => e.timer--);
+  explosions = explosions.filter(e => e.timer > 0);
+
+  // Collisions - Rockets vs Enemies
   for (let rocket of rockets) {
     for (let enemy of enemies) {
       if (!enemy.hit &&
@@ -205,9 +265,40 @@ function update() {
           rocket.y + rocket.height > enemy.y) {
         enemy.hit = true;
         rocket.hit = true;
-        score++;
+        score += enemy.type === 'flak88' ? 2 : 1; // More points for flak88
         sndExplosion.currentTime = 0;
-        sndExplosion.play();   // Explosion sound for hit
+        sndExplosion.play();
+        
+        // Add explosion effect
+        explosions.push({
+          x: enemy.x,
+          y: enemy.y,
+          width: enemy.type === 'flak88' ? 50 : 40,
+          height: enemy.type === 'flak88' ? 50 : 30,
+          timer: 15 // frames to display explosion
+        });
+      }
+    }
+  }
+
+  // Collisions - Flak Projectiles vs Player
+  for (let projectile of flakProjectiles) {
+    if (plane.x < projectile.x + projectile.width &&
+        plane.x + plane.width > projectile.x &&
+        plane.y < projectile.y + projectile.height &&
+        plane.y + plane.height > projectile.y) {
+      
+      if (gameState !== 'gameOver') {
+        gameState = 'gameOver';
+        planeExploded = true;
+        sndExplosion.play();
+        sndPropeller.pause();
+        setTimeout(() => {
+            planeExploded = false;
+        }, 500);
+        
+        // Mark projectile as hit so it disappears
+        projectile.y = -100; // Move it off screen
       }
     }
   }
@@ -240,11 +331,28 @@ function drawPlane() {
 function drawEnemies() {
   for (let e of enemies) {
     if (!e.hit) {
-      const img = e.type === 'tank' ? imgTank : imgHalftrack;
+      let img;
+      if (e.type === 'tank') img = imgTank;
+      else if (e.type === 'halftrack') img = imgHalftrack;
+      else if (e.type === 'flak88') img = imgFlak88;
+      
       ctx.drawImage(img, e.x, e.y, e.width, e.height);
-    } else {
-      ctx.drawImage(imgExplosion, e.x, e.y, 40, 30);
     }
+  }
+}
+
+function drawFlakProjectiles() {
+  ctx.fillStyle = '#ff0000'; // Red projectiles
+  for (let p of flakProjectiles) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.width/2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawExplosions() {
+  for (let e of explosions) {
+    ctx.drawImage(imgExplosion, e.x, e.y, e.width, e.height);
   }
 }
 
@@ -286,7 +394,6 @@ function drawMenu() {
   });
 }
 
-
 function drawGameOver() {
   ctx.fillStyle = 'red';
   ctx.font = '30px monospace';
@@ -301,6 +408,8 @@ function gameLoop() {
   drawBackground();
   drawPlane();
   drawEnemies();
+  drawFlakProjectiles(); // Draw flak projectiles
+  drawExplosions();
   drawRockets();
   drawScore();
 
@@ -313,7 +422,7 @@ function gameLoop() {
 
 // === Image Loading ===
 let imagesLoaded = 0;
-const totalImages = 4;
+const totalImages = 5; // Updated to 5 for the new flak88 image
 function checkAllImagesLoaded() {
   imagesLoaded++;
   if (imagesLoaded === totalImages) {
@@ -324,6 +433,7 @@ function checkAllImagesLoaded() {
 imgPlane.onload = checkAllImagesLoaded;
 imgTank.onload = checkAllImagesLoaded;
 imgHalftrack.onload = checkAllImagesLoaded;
+imgFlak88.onload = checkAllImagesLoaded;
 imgExplosion.onload = checkAllImagesLoaded;
 </script>
 </body>
