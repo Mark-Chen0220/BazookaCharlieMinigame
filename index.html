@@ -69,9 +69,6 @@ sndPropeller.volume = 1.0; // 100% volume
 const sndExplosion = new Audio('https://raw.githubusercontent.com/Mark-Chen0220/BazookaCharlieMinigame/main/explosionSFX.mp3');
 sndExplosion.volume = 0.4; // 40% volume
 
-const sndFlakFire = new Audio('https://raw.githubusercontent.com/Mark-Chen0220/BazookaCharlieMinigame/main/flakFire.mp3');
-sndFlakFire.volume = 0.3; // 30% volume
-
 
 // === Game State ===
 let score = 0;
@@ -176,8 +173,6 @@ function spawnEnemy() {
 function fireFlak(flak) {
   const now = Date.now();
   if (now - flak.lastFireTime > flakFireRate) {
-    sndFlakFire.currentTime = 0;
-    sndFlakFire.play();
     
     // Calculate angle (80 degrees upwards)
     const angle = 80 * Math.PI / 180;
